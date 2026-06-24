@@ -22,11 +22,13 @@ import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.Looper;
 import android.util.DisplayMetrics;
+import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 import android.view.WindowManager;
-import android.widget.FrameLayout;
+import android.widget.LinearLayout;
 import android.widget.TextView;
 
 import androidx.core.app.NotificationCompat;
@@ -40,61 +42,45 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 
-/**
- * 核心前台服务：
- *   - 悬浮窗状态指示器（可拖拽，点击暂停/恢复，长按停止）
- *   - 图片模式：屏幕截图 + 模板匹配
- *   - 文本模式：交给 AccessibilityService 处理
- */
 public class FloatWidgetService extends Service {
 
-    private static final String  CH_ID       = "automation_monitor";
-    private static final int     NOTIF_ID    = 1001;
-    private static final long    CAPTURE_MS  = 500;   // 截图间隔
-    private static final String  TARGET_DIR  = "/storage/emulated/0/自动化目标";
+    private static final String CH_ID = "automation_monitor";
+    private static final int NOTIF_ID = 1001;
+    private static final long CAPTURE_MS = 500;
+    private static final String TARGET_DIR = "/storage/emulated/0/自动化目标";
 
-    // UI
     private WindowManager wm;
-    private View          widget;
-    private TextView      modeLabel;
-    private View          dot;
+    private View widget;
+    private TextView modeLabel;
+    private View statusDot;
 
-    // 屏幕截图
     private MediaProjection projection;
-    private VirtualDisplay   vDisplay;
-    private ImageReader      reader;
+    private VirtualDisplay vDisplay;
+    private ImageReader reader;
     private int scrW, scrH, scrDpi;
 
-    // 线程
     private HandlerThread workerThread;
-    private Handler       worker;
-    private Handler       mainHandler;
+    private Handler worker;
+    private Handler mainHandler;
 
-    // 状态
-    private Bitmap  targetBmp;
-    private String  targetTxt;
+    private Bitmap targetBmp;
+    private String targetTxt;
     private volatile boolean active = false;
 
-    // 长按检测
-    private final Handler longPressHandler = new Handler(Looper.getMainLooper());
-    private boolean moved = false;
-
     private android.os.FileObserver fileObs;
-
-    /* ===================== lifecycle ===================== */
 
     @Override
     public void onCreate() {
         super.onCreate();
-        wm           = (WindowManager) getSystemService(WINDOW_SERVICE);
+        wm = (WindowManager) getSystemService(WINDOW_SERVICE);
         workerThread = new HandlerThread("auto_worker");
         workerThread.start();
-        worker       = new Handler(workerThread.getLooper());
-        mainHandler  = new Handler(Looper.getMainLooper());
+        worker = new Handler(workerThread.getLooper());
+        mainHandler = new Handler(Looper.getMainLooper());
 
         DisplayMetrics dm = getResources().getDisplayMetrics();
-        scrW   = dm.widthPixels;
-        scrH   = dm.heightPixels;
+        scrW = dm.widthPixels;
+        scrH = dm.heightPixels;
         scrDpi = dm.densityDpi;
     }
 
@@ -106,16 +92,14 @@ public class FloatWidgetService extends Service {
             return START_NOT_STICKY;
         }
 
-        // ① 立即前台
         createChannel();
-        Notification n = buildNotif("初始化中…");
+        Notification n = buildNotif("初始化中...");
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             startForeground(NOTIF_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION);
         } else {
             startForeground(NOTIF_ID, n);
         }
 
-        // ② MediaProjection
         int code = intent.getIntExtra("resultCode", 0);
         Intent data;
         if (Build.VERSION.SDK_INT >= 33) {
@@ -129,19 +113,48 @@ public class FloatWidgetService extends Service {
             projection = mpm.getMediaProjection(code, data);
             if (projection != null && Build.VERSION.SDK_INT >= 34) {
                 projection.registerCallback(new MediaProjection.Callback() {
-                    @Override public void onStop() {
-                        mainHandler.post(() -> updateDot("断开", Color.RED));
+                    @Override
+                    public void onStop() {
+                        mainHandler.post(() -> updateStatus("断开", Color.RED));
                     }
                 }, worker);
             }
         }
 
-        // ③ 悬浮窗
         showWidget();
 
-        // ④ 加载目标文件（worker 线程），然后自动开始监控
         worker.post(() -> {
             loadTargets();
+            watchDir();
+            if (AutomationHolder.getInstance().getMode() != AutomationHolder.Mode.IDLE) {
+                active = true;
+                AutomationHolder.getInstance().setMonitoring(true);
+                mainHandler.post(this::beginMonitor);
+            }
+        });
+
+        return START_NOT_STICKY;
+    }
+
+    @Override
+    public IBinder onBind(Intent i) {
+        return null;
+    }
+
+    @Override
+    public void onDestroy() {
+        cleanup();
+        super.onDestroy();
+    }
+
+    /* ========================= 悬浮窗 ========================= */
+
+    private void showWidget() {
+        widget = buildWidgetView();
+
+        WindowManager.LayoutParams p = new WindowManager.LayoutParams(
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.WRAP_CON            loadTargets();
             watchDir();
             if (AutomationHolder.getInstance().getMode() != AutomationHolder.Mode.IDLE) {
                 active = true;
