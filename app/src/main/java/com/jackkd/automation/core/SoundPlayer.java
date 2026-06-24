@@ -1,4 +1,3 @@
-
 package com.jackkd.automation.core;
 
 import android.content.Context;
@@ -6,9 +5,6 @@ import android.media.MediaPlayer;
 
 import java.io.File;
 
-/**
- * 播放「李麻花处刑曲.mp3」，内置冷却时间防止连续触发。
- */
 public class SoundPlayer {
 
     private static final String SOUND_PATH =
@@ -18,9 +14,6 @@ public class SoundPlayer {
     private static MediaPlayer player;
     private static long lastPlayTime = 0;
 
-    /**
-     * @return true = 成功触发播放; false = 冷却中或播放失败
-     */
     public static synchronized boolean play(Context ctx) {
         long now = System.currentTimeMillis();
         if (now - lastPlayTime < COOLDOWN_MS) return false;
@@ -47,8 +40,28 @@ public class SoundPlayer {
             return true;
         } catch (Exception e) {
             e.printStackTrace();
-            if (player != null) { player.release(); player = null; }
+            if (player != null) {
+                player.release();
+                player = null;
+            }
             return false;
         }
+    }
+
+    /** 停止正在播放的音乐并重置冷却 */
+    public static synchronized void stop() {
+        try {
+            if (player != null) {
+                if (player.isPlaying()) player.stop();
+                player.release();
+                player = null;
+            }
+        } catch (Exception e) {
+            if (player != null) {
+                player.release();
+                player = null;
+            }
+        }
+        lastPlayTime = 0;
     }
 }
