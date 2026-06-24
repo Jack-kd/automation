@@ -1,4 +1,3 @@
-
 plugins {
     id("com.android.application")
 }
@@ -27,6 +26,14 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+    }
+}
+
+configurations.all {
+    resolutionStrategy {
+        force("org.jetbrains.kotlin:kotlin-stdlib:1.8.22")
+        force("org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.8.22")
+        force("org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.8.22")
     }
 }
 
