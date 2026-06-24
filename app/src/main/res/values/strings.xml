@@ -1,1 +1,5 @@
 
+<resources>
+    <string name="app_name">自动化工具</string>
+    <string name="accessibility_desc">用于读取屏幕上的文字内容，实现文本自动化匹配检测。</string>
+</resources>
