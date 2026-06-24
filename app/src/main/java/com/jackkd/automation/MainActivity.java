@@ -1,4 +1,3 @@
-
 package com.jackkd.automation;
 
 import android.Manifest;
@@ -27,47 +26,47 @@ import com.jackkd.automation.service.FloatWidgetService;
 
 public class MainActivity extends AppCompatActivity {
 
-    private static final int REQ_PERM    = 100;
+    private static final int REQ_PERM = 100;
     private static final int REQ_CAPTURE = 101;
 
-    private TextView  tvStatus;
-    private SeekBar   seekSensitivity;
-    private TextView  tvSensitivity;
-    private Button    btnStart;
-
+    private TextView tvStatus;
+    private SeekBar seekSensitivity;
+    private TextView tvSensitivity;
+    private Button btnStart;
     private boolean returningFromSettings = false;
-
-    /* ========================= lifecycle ========================= */
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
-        tvStatus       = findViewById(R.id.tv_status);
+        tvStatus = findViewById(R.id.tv_status);
         seekSensitivity = findViewById(R.id.seek_sensitivity);
-        tvSensitivity  = findViewById(R.id.tv_sensitivity);
-        btnStart       = findViewById(R.id.btn_start);
+        tvSensitivity = findViewById(R.id.tv_sensitivity);
+        btnStart = findViewById(R.id.btn_start);
 
-        // 恢复灵敏度
         int saved = getSharedPreferences("cfg", MODE_PRIVATE).getInt("sens", 70);
         seekSensitivity.setProgress(saved);
         tvSensitivity.setText("灵敏度: " + saved + "%");
         AutomationHolder.getInstance().setSensitivity(saved);
 
         seekSensitivity.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
-            @Override public void onProgressChanged(SeekBar sb, int v, boolean fromUser) {
+            @Override
+            public void onProgressChanged(SeekBar sb, int v, boolean fromUser) {
                 v = Math.max(1, v);
                 tvSensitivity.setText("灵敏度: " + v + "%");
                 AutomationHolder.getInstance().setSensitivity(v);
                 getSharedPreferences("cfg", MODE_PRIVATE).edit().putInt("sens", v).apply();
             }
-            @Override public void onStartTrackingTouch(SeekBar sb) {}
-            @Override public void onStopTrackingTouch(SeekBar sb) {}
+
+            @Override
+            public void onStartTrackingTouch(SeekBar sb) {}
+
+            @Override
+            public void onStopTrackingTouch(SeekBar sb) {}
         });
 
         btnStart.setOnClickListener(v -> requestCapture());
-
         checkAllPermissions();
     }
 
@@ -105,28 +104,114 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    /* ========================= 权限检查 ========================= */
-
     private void checkAllPermissions() {
         StringBuilder sb = new StringBuilder();
         boolean allOk = true;
 
-        // ① 存储
         boolean storage = checkStorage();
-        sb.append(storage ? "✅ 存储权限\n" : "⬜ 存储权限 — 正在跳转设置…\n");
-        if (!storage) { allOk = false; returningFromSettings = true; requestStorage(); tvStatus.setText(sb); btnStart.setEnabled(false); return; }
+        sb.append(storage ? "OK 存储权限\n" : "-- 存储权限\n");
+        if (!storage) {
+            allOk = false;
+            returningFromSettings = true;
+            requestStorage();
+            tvStatus.setText(sb);
+            btnStart.setEnabled(false);
+            return;
+        }
 
-        // ② 悬浮窗
         boolean overlay = Settings.canDrawOverlays(this);
-        sb.append(overlay ? "✅ 悬浮窗权限\n" : "⬜ 悬浮窗权限 — 正在跳转设置…\n");
-        if (!overlay) { allOk = false; returningFromSettings = true; requestOverlay(); tvStatus.setText(sb); btnStart.setEnabled(false); return; }
+        sb.append(overlay ? "OK 悬浮窗权限\n" : "-- 悬浮窗权限\n");
+        if (!overlay) {
+            allOk = false;
+            returningFromSettings = true;
+            requestOverlay();
+            tvStatus.setText(sb);
+            btnStart.setEnabled(false);
+            return;
+        }
 
-        // ③ 通知 (Android 13+)
         boolean notif = checkNotification();
-        sb.append(notif ? "✅ 通知权限\n" : "⬜ 通知权限 — 正在请求…\n");
-        if (!notif) { allOk = false; tvStatus.setText(sb); btnStart.setEnabled(false); return; }
+        sb.append(notif ? "OK 通知权限\n" : "-- 通知权限\n");
+        if (!notif) {
+            allOk = false;
+            tvStatus.setText(sb);
+            btnStart.setEnabled(false);
+            return;
+        }
 
-        // ④ 无障碍
         boolean acc = isAccessibilityEnabled();
-        sb.append(acc ? "✅ 无障碍服务\n" : "⬜ 无障碍服务 — 正在跳转设置…\n");
-        if (!acc) { allOk = false; returningFromSettings = true; startActivity(new Intent(Setti
+        sb.append(acc ? "OK 无障碍服务\n" : "-- 无障碍服务\n");
+        if (!acc) {
+            allOk = false;
+            returningFromSettings = true;
+            startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+            tvStatus.setText(sb);
+            btnStart.setEnabled(false);
+            return;
+        }
+
+        tvStatus.setText(sb);
+        btnStart.setEnabled(allOk);
+        btnStart.setText(allOk ? "启动监控" : "请先授予权限");
+    }
+
+    private boolean checkStorage() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            return Environment.isExternalStorageManager();
+        }
+        return ContextCompat.checkSelfPermission(this,
+                Manifest.permission.READ_EXTERNAL_STORAGE) == PackageManager.PERMISSION_GRANTED;
+    }
+
+    private void requestStorage() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                startActivity(new Intent(
+                        Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                        Uri.parse("package:" + getPackageName())));
+            } catch (Exception e) {
+                startActivity(new Intent(
+                        Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION));
+            }
+        } else {
+            ActivityCompat.requestPermissions(this,
+                    new String[]{Manifest.permission.READ_EXTERNAL_STORAGE}, REQ_PERM);
+        }
+    }
+
+    private void requestOverlay() {
+        startActivity(new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:" + getPackageName())));
+    }
+
+    private boolean checkNotification() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(this,
+                    Manifest.permission.POST_NOTIFICATIONS)
+                    != PackageManager.PERMISSION_GRANTED) {
+                ActivityCompat.requestPermissions(this,
+                        new String[]{Manifest.permission.POST_NOTIFICATIONS}, REQ_PERM);
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private boolean isAccessibilityEnabled() {
+        String expected = getPackageName() + "/"
+                + AutoAccessibilityService.class.getCanonicalName();
+        String enabled = Settings.Secure.getString(getContentResolver(),
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+        if (enabled == null) return false;
+        for (String s : enabled.split(":")) {
+            if (s.trim().equalsIgnoreCase(expected)) return true;
+        }
+        return false;
+    }
+
+    private void requestCapture() {
+        MediaProjectionManager mpm =
+                (MediaProjectionManager) getSystemService(MEDIA_PROJECTION_SERVICE);
+        startActivityForResult(mpm.createScreenCaptureIntent(), REQ_CAPTURE);
+    }
+}
